@@ -48,7 +48,11 @@ def _login() -> str | None:
 def _post_scan(url: str, token: str | None) -> int | None:
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:
-        return requests.post(url, json={"full_scan": False}, headers=headers, timeout=15).status_code
+        code = requests.post(url, json={"full_scan": False}, headers=headers, timeout=15).status_code
+        if code == 405:
+            # 旧版 Swing 只提供 GET /trigger-scan
+            code = requests.get(url, headers=headers, timeout=15).status_code
+        return code
     except requests.RequestException as e:
         log.warning("swing scan failed: %s", e)
         return None
