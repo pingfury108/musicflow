@@ -1,0 +1,14 @@
+[project]
+name = "musicflow"
+version = "0.1.0"
+description = "音乐搜索下载入库工具，配合 Swing Music 即搜即下即听"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "musicdl>=2.13.4",
+    "requests>=2.32",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.6"]

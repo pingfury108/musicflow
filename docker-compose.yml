@@ -1,0 +1,12 @@
+services:
+  musicflow:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      MUSIC_DIR: /music
+      # 指向你已运行的 Swing Music；同主机容器外部署可用 host.docker.internal
+      SWING_URL: http://host.docker.internal:1970
+    volumes:
+      - ./music:/music # 必须与 Swing Music 的 root dir 是同一目录
+    restart: unless-stopped

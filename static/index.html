@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MusicFlow</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+<div class="max-w-3xl mx-auto p-6">
+  <h1 class="text-3xl font-bold mb-6 text-indigo-400">MusicFlow</h1>
+
+  <div class="flex gap-2 mb-6">
+    <input id="keyword" type="text" placeholder="输入歌名或歌手，回车搜索"
+      class="flex-1 px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-indigo-500"
+      onkeydown="if(event.key==='Enter')doSearch()">
+    <button onclick="doSearch()" class="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-medium">搜索</button>
+  </div>
+
+  <div id="results" class="space-y-2"></div>
+
+  <h2 class="text-lg font-semibold mt-10 mb-3 text-slate-300">下载任务</h2>
+  <div id="tasks" class="space-y-2 text-sm"></div>
+</div>
+
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function doSearch() {
+  const kw = document.getElementById('keyword').value.trim();
+  if (!kw) return;
+  const box = document.getElementById('results');
+  box.innerHTML = '<p class="text-slate-400">搜索中...</p>';
+  const res = await fetch('/api/search', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({keyword: kw})
+  });
+  const {data} = await res.json();
+  if (!data.length) {
+    box.innerHTML = '<p class="text-slate-400">无结果</p>';
+    return;
+  }
+  const toolbar = `
+    <div class="flex items-center gap-3 p-2">
+      <label class="flex items-center gap-2 text-sm text-slate-400 cursor-pointer">
+        <input type="checkbox" id="selectAll" onchange="toggleAll(this)" class="accent-indigo-500 w-4 h-4"> 全选
+      </label>
+      <button onclick="batchDownload()" class="px-4 py-1 text-sm bg-indigo-600 hover:bg-indigo-500 rounded">下载所选</button>
+      <span id="selCount" class="text-xs text-slate-500"></span>
+    </div>`;
+  const rows = data.map(item => `
+      <div class="flex items-center gap-3 p-3 bg-slate-800 rounded-lg border border-slate-700">
+        <input type="checkbox" class="track-cb accent-indigo-500 w-4 h-4 shrink-0" data-token="${item.token}" onchange="updateSelCount()">
+        ${item.cover_url
+          ? `<img src="${esc(item.cover_url)}" class="w-12 h-12 rounded object-cover" loading="lazy">`
+          : `<div class="w-12 h-12 rounded bg-slate-700"></div>`}
+        <div class="flex-1 min-w-0">
+          <div class="font-semibold text-indigo-200 truncate">${esc(item.title)}</div>
+          <div class="text-sm text-slate-400 truncate">
+            ${esc(item.artist)} · ${esc(item.album || '单曲')}
+            <span class="text-xs text-slate-500">[${esc(item.source)} ${esc(item.ext)} ${esc(item.size || '')} ${esc(item.duration || '')}]</span>
+          </div>
+        </div>
+        <button onclick="downloadTrack('${item.token}', this)" data-token="${item.token}"
+          class="dl-btn px-4 py-1.5 text-sm bg-slate-700 hover:bg-indigo-600 rounded shrink-0">下载</button>
+      </div>`).join('');
+  box.innerHTML = toolbar + rows;
+}
+
+function toggleAll(cb) {
+  document.querySelectorAll('.track-cb').forEach(c => c.checked = cb.checked);
+  updateSelCount();
+}
+
+function updateSelCount() {
+  const n = document.querySelectorAll('.track-cb:checked').length;
+  const el = document.getElementById('selCount');
+  if (el) el.innerText = n ? `已选 ${n} 首` : '';
+}
+
+function batchDownload() {
+  const checked = [...document.querySelectorAll('.track-cb:checked')];
+  checked.forEach(cb => {
+    const btn = document.querySelector(`.dl-btn[data-token="${cb.dataset.token}"]`);
+    // 全部立即提交，由后端队列串行下载
+    if (btn && !btn.disabled) downloadTrack(cb.dataset.token, btn);
+    cb.checked = false;
+  });
+  const sa = document.getElementById('selectAll');
+  if (sa) sa.checked = false;
+  updateSelCount();
+}
+
+async function downloadTrack(token, btn) {
+  btn.disabled = true;
+  btn.innerText = '提交中…';
+  const res = await fetch('/api/download', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({token})
+  });
+  if (!res.ok) {
+    btn.innerText = '✗ 提交失败';
+    return;
+  }
+  const {task_id} = await res.json();
+  refreshTasks();
+  pollTask(task_id, btn);
+}
+
+async function pollTask(taskId, btn) {
+  btn.innerText = '排队中…';
+  const timer = setInterval(async () => {
+    const res = await fetch(`/api/tasks/${taskId}`);
+    if (!res.ok) return;
+    const t = await res.json();
+    if (t.status === 'done') {
+      clearInterval(timer);
+      btn.innerText = '✓ 已完成';
+      btn.classList.remove('bg-yellow-700');
+      btn.classList.add('bg-green-700');
+    } else if (t.status === 'failed') {
+      clearInterval(timer);
+      btn.innerText = '✗ 失败，点击重试';
+      btn.classList.remove('bg-yellow-700');
+      btn.classList.add('bg-red-700');
+      btn.disabled = false;
+    } else if (t.status === 'downloading' && btn.innerText !== '下载中…') {
+      btn.innerText = '下载中…';
+      btn.classList.add('bg-yellow-700');
+    }
+  }, 1500);
+}
+
+const STATUS = {queued: ['排队中', 'text-slate-400'], downloading: ['下载中', 'text-yellow-400'],
+                done: ['完成', 'text-green-400'], failed: ['失败', 'text-red-400']};
+
+async function refreshTasks() {
+  const res = await fetch('/api/tasks');
+  const {data} = await res.json();
+  document.getElementById('tasks').innerHTML = data.length ? '' : '<p class="text-slate-500">暂无任务</p>';
+  data.forEach(t => {
+    const [label, cls] = STATUS[t.status] || [t.status, ''];
+    document.getElementById('tasks').innerHTML += `
+      <div class="flex justify-between p-2 bg-slate-800/60 rounded">
+        <span class="truncate">${esc(t.title)}</span>
+        <span class="${cls} shrink-0 ml-3">${label}${t.error ? ': ' + esc(t.error) : ''}</span>
+      </div>
+      ${t.file ? `<div class="text-xs text-slate-500 px-2 pb-1 truncate">已保存: ${esc(t.file)}</div>` : ''}`;
+  });
+}
+refreshTasks();
+setInterval(refreshTasks, 3000);
+</script>
+</body>
+</html>
