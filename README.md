@@ -28,6 +28,8 @@ docker run -d --name musicflow \
   -p 8000:8000 \
   -e MUSIC_DIR=/music \
   -e SWING_URL=http://<swing-music地址>:1970 \
+  -e SWING_USERNAME=<用户名> \
+  -e SWING_PASSWORD=<密码> \
   -v /path/to/music:/music \
   ghcr.io/<owner>/musicflow:latest
 ```
@@ -44,6 +46,8 @@ docker run -d --name musicflow \
 | `MUSIC_DIR` | `./music` | 音乐保存目录 |
 | `SWING_URL` | 空 | Swing Music 地址，为空则不触发扫描 |
 | `SWING_SCAN_PATH` | `/notsettings/trigger-scan` | Swing 扫描接口路径 |
+| `SWING_USERNAME` | 空 | Swing 用户名（开启用户系统后必填） |
+| `SWING_PASSWORD` | 空 | Swing 密码（开启用户系统后必填） |
 | `MUSIC_SOURCES` | 咪咕/网易/QQ/酷我/千千 | 启用的音源，逗号分隔 |
 | `SEARCH_SIZE` | `10` | 每个音源返回的结果数 |
 | `CACHE_TTL` | `1800` | 搜索结果缓存秒数（过期需重新搜索） |
